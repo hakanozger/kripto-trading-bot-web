@@ -709,10 +709,10 @@
                 } else {
                     // Simüle edilmiş bakiye verileri - sadece TRY ile başla
                     const mockBalances = {
-                        'TRY': { balance: 10000.00, value: 10000.00 }
+                        'TRY': { balance: 50000.00, value: 50000.00 }
                     };
                     balances = mockBalances;
-                    addLog('💰 Simülasyon modu: 10,000 TRY ile başlatıldı', 'info');
+                    addLog('💰 Simülasyon modu: 50,000 TRY ile başlatıldı', 'info');
                 }
                 
                 updateBalanceDisplay();
@@ -804,8 +804,8 @@
             };
             
             const basePrice = basePrices[asset] || 100;
-            // Gerçekçi fiyat dalgalanması (±2%)
-            const priceVariation = (Math.random() - 0.5) * 0.04;
+            // Gerçekçi fiyat dalgalanması (±5%) - daha volatil
+            const priceVariation = (Math.random() - 0.5) * 0.10;
             return basePrice * (1 + priceVariation);
         }
         
@@ -828,8 +828,8 @@
             // İlk trading döngüsü
             runTradingCycle();
             
-            // Sürekli çalışma - her 5 saniyede bir sinyal kontrolü
-            tradingInterval = setInterval(runTradingCycle, 5000);
+            // Sürekli çalışma - her 10 saniyede bir sinyal kontrolü (daha optimize)
+            tradingInterval = setInterval(runTradingCycle, 10000);
         }
         
         // Bot'u durdur
@@ -857,14 +857,16 @@
                 // Önce mevcut pozisyonları kontrol et (TP/SL)
                 await checkPositionsForExit();
                 
-                // Her sembol için sinyal üret
+                // Her sembol için sinyal üret (sadece işlem varsa log)
+                let hasTrade = false;
                 for (const [symbol, strategy] of Object.entries(OPTIMAL_STRATEGIES)) {
                     try {
                         const signal = await generateSignal(symbol, strategy);
                         updateSymbolCard(symbol, signal);
                         
-                        // İşlem yap - Güven eşiğini artırdık
-                        if (signal.action !== 'hold' && signal.confidence > 0.75) {
+                        // İşlem yap - Çok yüksek güven eşiği
+                        if (signal.action !== 'hold' && signal.confidence > 0.85) {
+                            hasTrade = true;
                             addLog(`🎯 ${symbol} ${signal.action} sinyali (${signal.confidence.toFixed(2)})`, 'info');
                             updateTradeCount();
                             
@@ -886,6 +888,11 @@
                     }
                 }
                 
+                // Sadece işlem varsa güncelleme logu
+                if (hasTrade) {
+                    addLog(`🔄 Trading döngüsü tamamlandı - ${Object.keys(positions).length} aktif pozisyon`, 'info');
+                }
+                
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('tr-TR');
                 
             } catch (error) {
@@ -904,10 +911,10 @@
                         // ALIM pozisyonu için TP/SL kontrolü
                         const profitPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
                         
-                        if (profitPercent >= 5.0) { // %5 Take Profit
+                        if (profitPercent >= 3.0) { // %3 Take Profit (daha hızlı kar al)
                             addLog(`🎯 ${symbol} Take Profit tetiklendi (%${profitPercent.toFixed(2)})`, 'success');
                             await closePosition(symbol, 'take_profit');
-                        } else if (profitPercent <= -3.0) { // %3 Stop Loss
+                        } else if (profitPercent <= -2.0) { // %2 Stop Loss (daha sıkı zarar durdurma)
                             addLog(`🛑 ${symbol} Stop Loss tetiklendi (%${profitPercent.toFixed(2)})`, 'warning');
                             await closePosition(symbol, 'stop_loss');
                         }
@@ -915,10 +922,10 @@
                         // SATIM pozisyonu için TP/SL kontrolü
                         const profitPercent = ((position.entryPrice - currentPrice) / position.entryPrice) * 100;
                         
-                        if (profitPercent >= 5.0) { // %5 Take Profit
+                        if (profitPercent >= 3.0) { // %3 Take Profit (daha hızlı kar al)
                             addLog(`🎯 ${symbol} Take Profit tetiklendi (%${profitPercent.toFixed(2)})`, 'success');
                             await closePosition(symbol, 'take_profit');
-                        } else if (profitPercent <= -3.0) { // %3 Stop Loss
+                        } else if (profitPercent <= -2.0) { // %2 Stop Loss (daha sıkı zarar durdurma)
                             addLog(`🛑 ${symbol} Stop Loss tetiklendi (%${profitPercent.toFixed(2)})`, 'warning');
                             await closePosition(symbol, 'stop_loss');
                         }
@@ -978,15 +985,15 @@
             }
         }
         
-        // Simülasyon sinyali üret - Optimize edilmiş
+        // Simülasyon sinyali üret - Daha da optimize edilmiş
         function generateSimulationSignal() {
             const random = Math.random();
             
-            // Çok daha az sinyal üret (komisyon maliyetlerini azaltmak için)
-            if (random < 0.03) { // %3'e düşürdük (önceden %15)
-                return { action: 'buy', confidence: 0.7 + Math.random() * 0.25, reason: 'Çok güçlü al sinyali (Simülasyon)' };
-            } else if (random < 0.05) { // %5'e düşürdük (önceden %25)
-                return { action: 'sell', confidence: 0.7 + Math.random() * 0.25, reason: 'Çok güçlü sat sinyali (Simülasyon)' };
+            // Çok daha az ama çok daha kaliteli sinyal üret
+            if (random < 0.008) { // %0.8 - çok nadir ama çok güçlü sinyal
+                return { action: 'buy', confidence: 0.85 + Math.random() * 0.15, reason: 'Süper güçlü al sinyali (Simülasyon)' };
+            } else if (random < 0.012) { // %1.2 - çok nadir ama çok güçlü sinyal
+                return { action: 'sell', confidence: 0.85 + Math.random() * 0.15, reason: 'Süper güçlü sat sinyali (Simülasyon)' };
             } else {
                 return { action: 'hold', confidence: 0, reason: 'Sinyal yok (Simülasyon)' };
             }
@@ -995,9 +1002,9 @@
         // Gerçek trading işlemi yap
         async function executeRealTrade(symbol, signal) {
             try {
-                // Pozisyon büyüklüğü hesapla (bakiye'nin %2.5'i - daha büyük pozisyonlar)
+                // Pozisyon büyüklüğü hesapla (bakiye'nin %5'i - daha büyük pozisyonlar)
                 const tryBalance = balances['TRY'] ? balances['TRY'].balance : 0;
-                const positionSize = tryBalance * 0.025; // %2.5 risk (komisyon maliyetlerini karşılamak için)
+                const positionSize = tryBalance * 0.05; // %5 risk (komisyon maliyetlerini karşılamak için)
                 
                 if (positionSize < 10) { // Minimum 10 TRY
                     addLog(`⚠️ ${symbol} için yetersiz bakiye (${tryBalance.toFixed(2)} TRY)`, 'warning');
@@ -1044,9 +1051,9 @@
                 const priceVariation = (Math.random() - 0.5) * 0.02; // ±1% fiyat değişimi
                 const currentPrice = basePrice * (1 + priceVariation);
                 
-                // Pozisyon büyüklüğü hesapla (bakiye'nin %2.5'i - daha büyük pozisyonlar)
+                // Pozisyon büyüklüğü hesapla (bakiye'nin %5'i - daha büyük pozisyonlar)
                 const tryBalance = balances['TRY'] ? balances['TRY'].balance : 0;
-                const positionSize = tryBalance * 0.025; // %2.5 risk (komisyon maliyetlerini karşılamak için)
+                const positionSize = tryBalance * 0.05; // %5 risk (komisyon maliyetlerini karşılamak için)
                 
                 if (positionSize < 10) { // Minimum 10 TRY
                     addLog(`⚠️ ${symbol} için yetersiz bakiye (${tryBalance.toFixed(2)} TRY)`, 'warning');
@@ -1100,7 +1107,7 @@
                         addLog(`💸 Brüt Maliyet: ${grossCost.toFixed(2)} TRY`, 'info');
                         addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY (${(commission/grossCost*100).toFixed(3)}%)`, 'info');
                         addLog(`💳 Toplam Maliyet: ${totalCost.toFixed(2)} TRY`, 'info');
-                        addLog(`🎯 TP: %5, SL: %3 ayarlandı`, 'info');
+                        addLog(`🎯 TP: %3, SL: %2 ayarlandı`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
                         updateBalanceDisplay();
@@ -1149,7 +1156,7 @@
                         addLog(`💰 Brüt Gelir: ${grossRevenue.toFixed(2)} TRY`, 'info');
                         addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY (${(commission/grossRevenue*100).toFixed(3)}%)`, 'info');
                         addLog(`💳 Net Gelir: ${netRevenue.toFixed(2)} TRY`, 'info');
-                        addLog(`🎯 TP: %5, SL: %3 ayarlandı`, 'info');
+                        addLog(`🎯 TP: %3, SL: %2 ayarlandı`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
                         updateBalanceDisplay();
