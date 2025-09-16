@@ -925,13 +925,19 @@
                 const quantity = positionSize / currentPrice;
                 const asset = symbol.replace('TRY', '');
                 
+                // BtcTurk komisyon oranları
+                const COMMISSION_RATE = 0.0012; // %0.12 taker fee
+                const MIN_COMMISSION = 0.50; // Minimum 0.50 TRY komisyon
+                
                 if (signal.action === 'buy') {
                     // ALIM işlemi simülasyonu
-                    const cost = quantity * currentPrice;
+                    const grossCost = quantity * currentPrice;
+                    const commission = Math.max(grossCost * COMMISSION_RATE, MIN_COMMISSION);
+                    const totalCost = grossCost + commission;
                     
-                    if (tryBalance >= cost) {
+                    if (tryBalance >= totalCost) {
                         // TRY bakiyesini azalt
-                        balances['TRY'].balance -= cost;
+                        balances['TRY'].balance -= totalCost;
                         balances['TRY'].value = balances['TRY'].balance;
                         
                         // Kripto bakiyesini artır
@@ -948,31 +954,37 @@
                         addLog(`📈 ${symbol} ALIM işlemi simüle edildi`, 'success');
                         addLog(`💰 Miktar: ${quantity.toFixed(6)} ${asset}`, 'info');
                         addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
-                        addLog(`💸 Maliyet: ${cost.toFixed(2)} TRY`, 'info');
+                        addLog(`💸 Brüt Maliyet: ${grossCost.toFixed(2)} TRY`, 'info');
+                        addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY`, 'info');
+                        addLog(`💳 Toplam Maliyet: ${totalCost.toFixed(2)} TRY`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
                         updateBalanceDisplay();
                     } else {
-                        addLog(`❌ ${symbol} için yetersiz TRY bakiyesi`, 'error');
+                        addLog(`❌ ${symbol} için yetersiz TRY bakiyesi (Gerekli: ${totalCost.toFixed(2)} TRY)`, 'error');
                     }
                     
                 } else if (signal.action === 'sell') {
                     // SATIM işlemi simülasyonu
                     if (balances[asset] && balances[asset].balance >= quantity) {
-                        const revenue = quantity * currentPrice;
+                        const grossRevenue = quantity * currentPrice;
+                        const commission = Math.max(grossRevenue * COMMISSION_RATE, MIN_COMMISSION);
+                        const netRevenue = grossRevenue - commission;
                         
                         // Kripto bakiyesini azalt
                         balances[asset].balance -= quantity;
                         balances[asset].value = balances[asset].balance * currentPrice;
                         
                         // TRY bakiyesini artır
-                        balances['TRY'].balance += revenue;
+                        balances['TRY'].balance += netRevenue;
                         balances['TRY'].value = balances['TRY'].balance;
                         
                         addLog(`📉 ${symbol} SATIM işlemi simüle edildi`, 'success');
                         addLog(`💰 Miktar: ${quantity.toFixed(6)} ${asset}`, 'info');
                         addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
-                        addLog(`💰 Gelir: ${revenue.toFixed(2)} TRY`, 'info');
+                        addLog(`💰 Brüt Gelir: ${grossRevenue.toFixed(2)} TRY`, 'info');
+                        addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY`, 'info');
+                        addLog(`💳 Net Gelir: ${netRevenue.toFixed(2)} TRY`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
                         updateBalanceDisplay();
