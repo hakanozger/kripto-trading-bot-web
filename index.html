@@ -936,7 +936,7 @@
             }
         }
         
-        // Pozisyonu kapat
+        // Pozisyonu kapat - TAM pozisyon kapatma
         async function closePosition(symbol, reason) {
             const position = positions[symbol];
             if (!position) return;
@@ -945,15 +945,19 @@
                 const currentPrice = getCurrentPrice(symbol.replace('TRY', ''));
                 const asset = symbol.replace('TRY', '');
                 
-                // Pozisyon kapatma sinyali
+                // TAM pozisyon miktarını al
+                const fullQuantity = position.quantity;
+                
+                // Pozisyon kapatma sinyali - TAM miktar ile
                 const closeSignal = {
                     action: position.side === 'buy' ? 'sell' : 'buy',
                     confidence: 1.0,
-                    reason: `Otomatik kapatma: ${reason}`
+                    reason: `Otomatik kapatma: ${reason}`,
+                    quantity: fullQuantity // TAM pozisyon miktarı
                 };
                 
-                // Simüle edilmiş pozisyon kapatma
-                await executeSimulationTrade(symbol, closeSignal);
+                // Simüle edilmiş TAM pozisyon kapatma
+                await executeSimulationTradeWithQuantity(symbol, closeSignal, fullQuantity);
                 
                 // Pozisyonu temizle
                 delete positions[symbol];
@@ -961,7 +965,7 @@
                 // Aktif pozisyon sayısını güncelle
                 updateActivePositions();
                 
-                addLog(`✅ ${symbol} pozisyonu kapatıldı (${reason})`, 'success');
+                addLog(`✅ ${symbol} TAM pozisyonu kapatıldı (${reason}) - ${fullQuantity.toFixed(6)} ${asset}`, 'success');
                 
             } catch (error) {
                 addLog(`❌ ${symbol} pozisyon kapatma hatası: ${error.message}`, 'error');
@@ -1040,6 +1044,85 @@
             } catch (error) {
                 addLog(`❌ ${symbol} işlem hatası: ${error.message}`, 'error');
                 throw error;
+            }
+        }
+        
+        // Simülasyon trading işlemi yap - TAM pozisyon kapatma için
+        async function executeSimulationTradeWithQuantity(symbol, signal, specificQuantity) {
+            try {
+                // Simüle edilmiş fiyat oluştur
+                const basePrice = getSimulatedPrice(symbol);
+                const priceVariation = (Math.random() - 0.5) * 0.02; // ±1% fiyat değişimi
+                const currentPrice = basePrice * (1 + priceVariation);
+                
+                const asset = symbol.replace('TRY', '');
+                
+                // BtcTurk komisyon oranları
+                const COMMISSION_RATE = 0.0012; // %0.12 taker fee
+                const MIN_COMMISSION = 0.50; // Minimum 0.50 TRY komisyon
+                
+                if (signal.action === 'buy') {
+                    // ALIM işlemi simülasyonu
+                    const grossCost = specificQuantity * currentPrice;
+                    const commission = calculateCommission(grossCost, false); // Taker (Piyasa Alıcı)
+                    const totalCost = grossCost + commission;
+                    
+                    const tryBalance = balances['TRY'] ? balances['TRY'].balance : 0;
+                    
+                    if (tryBalance >= totalCost) {
+                        // TRY bakiyesini azalt
+                        balances['TRY'].balance -= totalCost;
+                        balances['TRY'].value = balances['TRY'].balance;
+                        
+                        // Kripto bakiyesini artır
+                        if (balances[asset]) {
+                            balances[asset].balance += specificQuantity;
+                            balances[asset].value = balances[asset].balance * currentPrice;
+                        } else {
+                            balances[asset] = {
+                                balance: specificQuantity,
+                                value: specificQuantity * currentPrice
+                            };
+                        }
+                        
+                        addLog(`📈 ${symbol} ALIM işlemi (TAM pozisyon)`, 'success');
+                        addLog(`💰 Miktar: ${specificQuantity.toFixed(6)} ${asset}`, 'info');
+                        addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
+                        addLog(`💳 Toplam Maliyet: ${totalCost.toFixed(2)} TRY`, 'info');
+                        
+                        // Bakiye görüntüsünü güncelle
+                        updateBalanceDisplay();
+                        updateActivePositions();
+                    }
+                    
+                } else if (signal.action === 'sell') {
+                    // SATIM işlemi simülasyonu - TAM pozisyon kapatma
+                    if (balances[asset] && balances[asset].balance >= specificQuantity) {
+                        const grossRevenue = specificQuantity * currentPrice;
+                        const commission = calculateCommission(grossRevenue, false); // Taker (Piyasa Alıcı)
+                        const netRevenue = grossRevenue - commission;
+                        
+                        // Kripto bakiyesini TAM olarak azalt
+                        balances[asset].balance -= specificQuantity;
+                        balances[asset].value = balances[asset].balance * currentPrice;
+                        
+                        // TRY bakiyesini artır
+                        balances['TRY'].balance += netRevenue;
+                        balances['TRY'].value = balances['TRY'].balance;
+                        
+                        addLog(`📉 ${symbol} SATIM işlemi (TAM pozisyon)`, 'success');
+                        addLog(`💰 Miktar: ${specificQuantity.toFixed(6)} ${asset}`, 'info');
+                        addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
+                        addLog(`💳 Net Gelir: ${netRevenue.toFixed(2)} TRY`, 'info');
+                        
+                        // Bakiye görüntüsünü güncelle
+                        updateBalanceDisplay();
+                        updateActivePositions();
+                    }
+                }
+                
+            } catch (error) {
+                addLog(`❌ ${symbol} TAM pozisyon işlem hatası: ${error.message}`, 'error');
             }
         }
         
