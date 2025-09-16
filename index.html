@@ -652,6 +652,7 @@
         let balances = {};
         let useRealAPI = false;
         let totalTradingVolume = 0; // 30 günlük toplam işlem hacmi
+        let positions = {}; // Aktif pozisyonlar
         
         // Walk-forward optimize edilmiş stratejiler - Optimize edilmiş
         const OPTIMAL_STRATEGIES = {
@@ -827,8 +828,8 @@
             // İlk trading döngüsü
             runTradingCycle();
             
-            // Her 2 dakikada bir trading döngüsü çalıştır (daha az sık)
-            tradingInterval = setInterval(runTradingCycle, 120000);
+            // Sürekli çalışma - her 5 saniyede bir sinyal kontrolü
+            tradingInterval = setInterval(runTradingCycle, 5000);
         }
         
         // Bot'u durdur
@@ -853,7 +854,8 @@
             if (!botRunning) return;
             
             try {
-                addLog('🔄 Trading döngüsü başlatılıyor...', 'info');
+                // Önce mevcut pozisyonları kontrol et (TP/SL)
+                await checkPositionsForExit();
                 
                 // Her sembol için sinyal üret
                 for (const [symbol, strategy] of Object.entries(OPTIMAL_STRATEGIES)) {
@@ -888,6 +890,74 @@
                 
             } catch (error) {
                 addLog(`❌ Trading döngüsü hatası: ${error.message}`, 'error');
+            }
+        }
+        
+        // Pozisyonları kontrol et ve TP/SL uygula
+        async function checkPositionsForExit() {
+            for (const [symbol, position] of Object.entries(positions)) {
+                try {
+                    const currentPrice = getCurrentPrice(symbol.replace('TRY', ''));
+                    const asset = symbol.replace('TRY', '');
+                    
+                    if (position.side === 'buy') {
+                        // ALIM pozisyonu için TP/SL kontrolü
+                        const profitPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
+                        
+                        if (profitPercent >= 5.0) { // %5 Take Profit
+                            addLog(`🎯 ${symbol} Take Profit tetiklendi (%${profitPercent.toFixed(2)})`, 'success');
+                            await closePosition(symbol, 'take_profit');
+                        } else if (profitPercent <= -3.0) { // %3 Stop Loss
+                            addLog(`🛑 ${symbol} Stop Loss tetiklendi (%${profitPercent.toFixed(2)})`, 'warning');
+                            await closePosition(symbol, 'stop_loss');
+                        }
+                    } else if (position.side === 'sell') {
+                        // SATIM pozisyonu için TP/SL kontrolü
+                        const profitPercent = ((position.entryPrice - currentPrice) / position.entryPrice) * 100;
+                        
+                        if (profitPercent >= 5.0) { // %5 Take Profit
+                            addLog(`🎯 ${symbol} Take Profit tetiklendi (%${profitPercent.toFixed(2)})`, 'success');
+                            await closePosition(symbol, 'take_profit');
+                        } else if (profitPercent <= -3.0) { // %3 Stop Loss
+                            addLog(`🛑 ${symbol} Stop Loss tetiklendi (%${profitPercent.toFixed(2)})`, 'warning');
+                            await closePosition(symbol, 'stop_loss');
+                        }
+                    }
+                } catch (error) {
+                    addLog(`❌ ${symbol} pozisyon kontrolü hatası: ${error.message}`, 'error');
+                }
+            }
+        }
+        
+        // Pozisyonu kapat
+        async function closePosition(symbol, reason) {
+            const position = positions[symbol];
+            if (!position) return;
+            
+            try {
+                const currentPrice = getCurrentPrice(symbol.replace('TRY', ''));
+                const asset = symbol.replace('TRY', '');
+                
+                // Pozisyon kapatma sinyali
+                const closeSignal = {
+                    action: position.side === 'buy' ? 'sell' : 'buy',
+                    confidence: 1.0,
+                    reason: `Otomatik kapatma: ${reason}`
+                };
+                
+                // Simüle edilmiş pozisyon kapatma
+                await executeSimulationTrade(symbol, closeSignal);
+                
+                // Pozisyonu temizle
+                delete positions[symbol];
+                
+                // Aktif pozisyon sayısını güncelle
+                updateActivePositions();
+                
+                addLog(`✅ ${symbol} pozisyonu kapatıldı (${reason})`, 'success');
+                
+            } catch (error) {
+                addLog(`❌ ${symbol} pozisyon kapatma hatası: ${error.message}`, 'error');
             }
         }
         
@@ -1013,6 +1083,14 @@
                             };
                         }
                         
+                        // Pozisyon kaydet
+                        positions[symbol] = {
+                            side: 'buy',
+                            entryPrice: currentPrice,
+                            quantity: quantity,
+                            timestamp: Date.now()
+                        };
+                        
                         // İşlem hacmini güncelle
                         updateTradingVolume(grossCost);
                         
@@ -1022,9 +1100,13 @@
                         addLog(`💸 Brüt Maliyet: ${grossCost.toFixed(2)} TRY`, 'info');
                         addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY (${(commission/grossCost*100).toFixed(3)}%)`, 'info');
                         addLog(`💳 Toplam Maliyet: ${totalCost.toFixed(2)} TRY`, 'info');
+                        addLog(`🎯 TP: %5, SL: %3 ayarlandı`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
                         updateBalanceDisplay();
+                        
+                        // Aktif pozisyon sayısını güncelle
+                        updateActivePositions();
                     } else {
                         addLog(`❌ ${symbol} için yetersiz TRY bakiyesi (Gerekli: ${totalCost.toFixed(2)} TRY)`, 'error');
                     }
@@ -1050,6 +1132,14 @@
                         balances['TRY'].balance += netRevenue;
                         balances['TRY'].value = balances['TRY'].balance;
                         
+                        // Pozisyon kaydet (kısa pozisyon)
+                        positions[symbol] = {
+                            side: 'sell',
+                            entryPrice: currentPrice,
+                            quantity: quantity,
+                            timestamp: Date.now()
+                        };
+                        
                         // İşlem hacmini güncelle
                         updateTradingVolume(grossRevenue);
                         
@@ -1059,9 +1149,13 @@
                         addLog(`💰 Brüt Gelir: ${grossRevenue.toFixed(2)} TRY`, 'info');
                         addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY (${(commission/grossRevenue*100).toFixed(3)}%)`, 'info');
                         addLog(`💳 Net Gelir: ${netRevenue.toFixed(2)} TRY`, 'info');
+                        addLog(`🎯 TP: %5, SL: %3 ayarlandı`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
                         updateBalanceDisplay();
+                        
+                        // Aktif pozisyon sayısını güncelle
+                        updateActivePositions();
                     } else {
                         addLog(`❌ ${symbol} için yetersiz ${asset} bakiyesi`, 'error');
                     }
@@ -1236,6 +1330,12 @@
         function updateTradeCount() {
             const currentCount = parseInt(document.getElementById('totalTrades').textContent) || 0;
             document.getElementById('totalTrades').textContent = currentCount + 1;
+        }
+        
+        // Aktif pozisyon sayısını güncelle
+        function updateActivePositions() {
+            const activeCount = Object.keys(positions).length;
+            document.getElementById('activePositions').textContent = activeCount;
         }
         
         // Sayfa kapatılırken bot'u durdur
