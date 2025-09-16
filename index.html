@@ -592,6 +592,10 @@
                     <h3>Son Güncelleme</h3>
                     <div class="value" id="lastUpdate">-</div>
                 </div>
+                <div class="status-item">
+                    <h3>İşlem Hacmi (30 Gün)</h3>
+                    <div class="value" id="tradingVolume">0.00 TRY</div>
+                </div>
             </div>
         </div>
         
@@ -637,6 +641,7 @@
         let apiSecret = '';
         let balances = {};
         let useRealAPI = false;
+        let totalTradingVolume = 0; // 30 günlük toplam işlem hacmi
         
         // Walk-forward optimize edilmiş stratejiler
         const OPTIMAL_STRATEGIES = {
@@ -925,14 +930,10 @@
                 const quantity = positionSize / currentPrice;
                 const asset = symbol.replace('TRY', '');
                 
-                // BtcTurk komisyon oranları
-                const COMMISSION_RATE = 0.0012; // %0.12 taker fee
-                const MIN_COMMISSION = 0.50; // Minimum 0.50 TRY komisyon
-                
                 if (signal.action === 'buy') {
                     // ALIM işlemi simülasyonu
                     const grossCost = quantity * currentPrice;
-                    const commission = Math.max(grossCost * COMMISSION_RATE, MIN_COMMISSION);
+                    const commission = calculateCommission(grossCost, false); // Taker (Piyasa Alıcı)
                     const totalCost = grossCost + commission;
                     
                     if (tryBalance >= totalCost) {
@@ -951,11 +952,14 @@
                             };
                         }
                         
+                        // İşlem hacmini güncelle
+                        updateTradingVolume(grossCost);
+                        
                         addLog(`📈 ${symbol} ALIM işlemi simüle edildi`, 'success');
                         addLog(`💰 Miktar: ${quantity.toFixed(6)} ${asset}`, 'info');
                         addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
                         addLog(`💸 Brüt Maliyet: ${grossCost.toFixed(2)} TRY`, 'info');
-                        addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY`, 'info');
+                        addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY (${(commission/grossCost*100).toFixed(3)}%)`, 'info');
                         addLog(`💳 Toplam Maliyet: ${totalCost.toFixed(2)} TRY`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
@@ -968,7 +972,7 @@
                     // SATIM işlemi simülasyonu
                     if (balances[asset] && balances[asset].balance >= quantity) {
                         const grossRevenue = quantity * currentPrice;
-                        const commission = Math.max(grossRevenue * COMMISSION_RATE, MIN_COMMISSION);
+                        const commission = calculateCommission(grossRevenue, false); // Taker (Piyasa Alıcı)
                         const netRevenue = grossRevenue - commission;
                         
                         // Kripto bakiyesini azalt
@@ -979,11 +983,14 @@
                         balances['TRY'].balance += netRevenue;
                         balances['TRY'].value = balances['TRY'].balance;
                         
+                        // İşlem hacmini güncelle
+                        updateTradingVolume(grossRevenue);
+                        
                         addLog(`📉 ${symbol} SATIM işlemi simüle edildi`, 'success');
                         addLog(`💰 Miktar: ${quantity.toFixed(6)} ${asset}`, 'info');
                         addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
                         addLog(`💰 Brüt Gelir: ${grossRevenue.toFixed(2)} TRY`, 'info');
-                        addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY`, 'info');
+                        addLog(`🏦 Komisyon: ${commission.toFixed(2)} TRY (${(commission/grossRevenue*100).toFixed(3)}%)`, 'info');
                         addLog(`💳 Net Gelir: ${netRevenue.toFixed(2)} TRY`, 'info');
                         
                         // Bakiye görüntüsünü güncelle
@@ -996,6 +1003,67 @@
             } catch (error) {
                 addLog(`❌ ${symbol} simülasyon işlem hatası: ${error.message}`, 'error');
             }
+        }
+        
+        // BtcTurk kademeli komisyon sistemi
+        function getCommissionRate(volume, isMaker = false) {
+            // Kripto/TRY alış-satış komisyonu (Piyasa Alıcı - Taker)
+            const kriptoTryRates = [
+                { min: 0, max: 2000000, maker: 0.0012, taker: 0.0020 },
+                { min: 2000000, max: 10000000, maker: 0.0011, taker: 0.0019 },
+                { min: 10000000, max: 25000000, maker: 0.0010, taker: 0.0018 },
+                { min: 25000000, max: 100000000, maker: 0.0008, taker: 0.0016 },
+                { min: 100000000, max: 250000000, maker: 0.0006, taker: 0.0012 },
+                { min: 250000000, max: 1000000000, maker: 0.0004, taker: 0.0010 },
+                { min: 1000000000, max: 2000000000, maker: 0.0002, taker: 0.0009 },
+                { min: 2000000000, max: Infinity, maker: 0.0001, taker: 0.0008 }
+            ];
+            
+            // Hangi kademede olduğumuzu bul
+            const tier = kriptoTryRates.find(t => volume >= t.min && volume < t.max);
+            
+            if (!tier) {
+                // Son kademe
+                return isMaker ? 0.0001 : 0.0008;
+            }
+            
+            return isMaker ? tier.maker : tier.taker;
+        }
+        
+        // Komisyon hesapla
+        function calculateCommission(amount, isMaker = false) {
+            const rate = getCommissionRate(totalTradingVolume, isMaker);
+            const commission = amount * rate;
+            const minCommission = 0.50; // Minimum 0.50 TRY komisyon
+            
+            return Math.max(commission, minCommission);
+        }
+        
+        // İşlem hacmini güncelle
+        function updateTradingVolume(amount) {
+            totalTradingVolume += amount;
+            document.getElementById('tradingVolume').textContent = `${totalTradingVolume.toFixed(2)} TRY`;
+            
+            // Hangi kademede olduğumuzu göster
+            const currentTier = getCurrentTier();
+            addLog(`📊 Toplam işlem hacmi: ${totalTradingVolume.toFixed(2)} TRY (Kademe: ${currentTier})`, 'info');
+        }
+        
+        // Mevcut kademeyi bul
+        function getCurrentTier() {
+            const tiers = [
+                { min: 0, max: 2000000, name: '1' },
+                { min: 2000000, max: 10000000, name: '2' },
+                { min: 10000000, max: 25000000, name: '3' },
+                { min: 25000000, max: 100000000, name: '4' },
+                { min: 100000000, max: 250000000, name: '5' },
+                { min: 250000000, max: 1000000000, name: '6' },
+                { min: 1000000000, max: 2000000000, name: '7' },
+                { min: 2000000000, max: Infinity, name: '8' }
+            ];
+            
+            const tier = tiers.find(t => totalTradingVolume >= t.min && totalTradingVolume < t.max);
+            return tier ? tier.name : '8';
         }
         
         // Simüle edilmiş fiyat oluştur
