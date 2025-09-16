@@ -1,0 +1,24 @@
+{
+  "name": "kripto-trading-bot-web",
+  "version": "1.0.0",
+  "description": "Güvenli web versiyonu - API anahtarları içermez",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "dev": "python -m http.server 8000"
+  },
+  "keywords": [
+    "crypto",
+    "trading",
+    "bot",
+    "web",
+    "javascript"
+  ],
+  "author": "Trading Bot",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hakanozger/kripto-trading-bot-web.git"
+  },
+  "homepage": "https://hakanozger.github.io/kripto-trading-bot-web/"
+}
