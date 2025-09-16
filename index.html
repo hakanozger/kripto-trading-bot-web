@@ -515,6 +515,16 @@
             to { opacity: 1; transform: translateY(0); }
         }
         
+        .profit {
+            color: #28a745 !important;
+            font-weight: 700;
+        }
+        
+        .loss {
+            color: #dc3545 !important;
+            font-weight: 700;
+        }
+        
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -716,7 +726,7 @@
             }
         }
         
-        // Bakiye görüntüsünü güncelle
+        // Bakiye görüntüsünü güncelle - Gerçek zamanlı fiyatlarla
         function updateBalanceDisplay() {
             const balanceGrid = document.getElementById('balanceGrid');
             const totalBalance = document.getElementById('totalBalance');
@@ -726,14 +736,30 @@
             
             Object.entries(balances).forEach(([asset, data]) => {
                 if (data.balance > 0) {
-                    totalValue += data.value;
+                    // Güncel fiyatı al ve değeri hesapla
+                    const currentPrice = getCurrentPrice(asset);
+                    const currentValue = data.balance * currentPrice;
+                    
+                    // TRY için değer = bakiye
+                    const displayValue = asset === 'TRY' ? data.balance : currentValue;
+                    totalValue += displayValue;
+                    
+                    // Kar/zarar hesapla (TRY hariç)
+                    let profitLoss = '';
+                    let profitClass = '';
+                    if (asset !== 'TRY' && data.originalValue) {
+                        const pl = currentValue - data.originalValue;
+                        const plPercent = (pl / data.originalValue) * 100;
+                        profitLoss = `${pl >= 0 ? '+' : ''}${pl.toFixed(2)} TRY (${plPercent >= 0 ? '+' : ''}${plPercent.toFixed(2)}%)`;
+                        profitClass = pl >= 0 ? 'profit' : 'loss';
+                    }
                     
                     const balanceItem = document.createElement('div');
                     balanceItem.className = 'balance-item fade-in';
                     balanceItem.innerHTML = `
                         <div class="balance-item-header">
                             <div class="asset-name">${asset}</div>
-                            <div class="asset-value">${data.value.toFixed(2)} TRY</div>
+                            <div class="asset-value">${displayValue.toFixed(2)} TRY</div>
                         </div>
                         <div class="asset-details">
                             <div class="detail-item">
@@ -741,9 +767,15 @@
                                 <span class="detail-value">${data.balance.toFixed(6)}</span>
                             </div>
                             <div class="detail-item">
-                                <span class="detail-label">Değer:</span>
-                                <span class="detail-value">${data.value.toFixed(2)} TRY</span>
+                                <span class="detail-label">Güncel Fiyat:</span>
+                                <span class="detail-value">${currentPrice.toFixed(asset === 'TRY' ? 2 : 6)} TRY</span>
                             </div>
+                            ${profitLoss ? `
+                            <div class="detail-item">
+                                <span class="detail-label">Kar/Zarar:</span>
+                                <span class="detail-value ${profitClass}">${profitLoss}</span>
+                            </div>
+                            ` : ''}
                         </div>
                     `;
                     balanceGrid.appendChild(balanceItem);
@@ -751,6 +783,29 @@
             });
             
             totalBalance.textContent = `${totalValue.toFixed(2)} TRY`;
+        }
+        
+        // Güncel fiyatı al (simüle edilmiş veya gerçek)
+        function getCurrentPrice(asset) {
+            if (asset === 'TRY') return 1.0;
+            
+            // Simüle edilmiş fiyatlar (gerçek API'den gelecek)
+            const basePrices = {
+                'BTC': 2500000,
+                'ETH': 85000,
+                'ADA': 15,
+                'DOGE': 0.8,
+                'SOL': 5000,
+                'AVAX': 2000,
+                'TRX': 0.5,
+                'XRP': 20,
+                'SHIB': 0.00001
+            };
+            
+            const basePrice = basePrices[asset] || 100;
+            // Gerçekçi fiyat dalgalanması (±2%)
+            const priceVariation = (Math.random() - 0.5) * 0.04;
+            return basePrice * (1 + priceVariation);
         }
         
         // Bot'u başlat
@@ -944,12 +999,17 @@
                         
                         // Kripto bakiyesini artır
                         if (balances[asset]) {
+                            const oldBalance = balances[asset].balance;
+                            const oldOriginalValue = balances[asset].originalValue || 0;
                             balances[asset].balance += quantity;
                             balances[asset].value = balances[asset].balance * currentPrice;
+                            // Orijinal değeri güncelle (ağırlıklı ortalama)
+                            balances[asset].originalValue = oldOriginalValue + grossCost;
                         } else {
                             balances[asset] = {
                                 balance: quantity,
-                                value: quantity * currentPrice
+                                value: quantity * currentPrice,
+                                originalValue: grossCost // Alış maliyeti
                             };
                         }
                         
@@ -977,8 +1037,14 @@
                         const netRevenue = grossRevenue - commission;
                         
                         // Kripto bakiyesini azalt
+                        const soldRatio = quantity / balances[asset].balance;
                         balances[asset].balance -= quantity;
                         balances[asset].value = balances[asset].balance * currentPrice;
+                        
+                        // Orijinal değeri orantılı olarak azalt
+                        if (balances[asset].originalValue) {
+                            balances[asset].originalValue -= balances[asset].originalValue * soldRatio;
+                        }
                         
                         // TRY bakiyesini artır
                         balances['TRY'].balance += netRevenue;
@@ -1179,10 +1245,23 @@
             }
         });
         
+        // Otomatik fiyat güncelleme döngüsü
+        function startPriceUpdateLoop() {
+            // Her 30 saniyede bir fiyatları güncelle
+            setInterval(() => {
+                if (Object.keys(balances).length > 0) {
+                    updateBalanceDisplay();
+                }
+            }, 30000);
+        }
+        
         // Sayfa yüklendiğinde başlangıç verilerini yükle
         window.addEventListener('load', function() {
             addLog('🚀 Trading bot yüklendi!', 'success');
             addLog('💡 API anahtarlarınızı girin ve bot\'u başlatın.', 'info');
+            
+            // Fiyat güncelleme döngüsünü başlat
+            startPriceUpdateLoop();
         });
     </script>
 </body>
