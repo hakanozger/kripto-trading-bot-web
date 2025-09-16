@@ -691,20 +691,12 @@
                     balances = balanceData.balances;
                     addLog(`💰 Toplam bakiye: ${balanceData.totalValue.toFixed(2)} TRY`, 'success');
                 } else {
-                    // Simüle edilmiş bakiye verileri
+                    // Simüle edilmiş bakiye verileri - sadece TRY ile başla
                     const mockBalances = {
-                        'TRY': { balance: 1000.00, value: 1000.00 },
-                        'BTC': { balance: 0.001, value: 250.00 },
-                        'ETH': { balance: 0.05, value: 150.00 },
-                        'ADA': { balance: 100.0, value: 50.00 },
-                        'DOGE': { balance: 1000.0, value: 30.00 },
-                        'SOL': { balance: 0.5, value: 75.00 },
-                        'AVAX': { balance: 1.0, value: 40.00 },
-                        'TRX': { balance: 500.0, value: 25.00 },
-                        'XRP': { balance: 100.0, value: 35.00 },
-                        'SHIB': { balance: 1000000.0, value: 15.00 }
+                        'TRY': { balance: 10000.00, value: 10000.00 }
                     };
                     balances = mockBalances;
+                    addLog('💰 Simülasyon modu: 10,000 TRY ile başlatıldı', 'info');
                 }
                 
                 updateBalanceDisplay();
@@ -823,11 +815,7 @@
                                 }
                             } else {
                                 // Simüle edilmiş işlem
-                                if (signal.action === 'buy') {
-                                    addLog(`📈 ${symbol} ALIM işlemi simüle edildi`, 'success');
-                                } else if (signal.action === 'sell') {
-                                    addLog(`📉 ${symbol} SATIM işlemi simüle edildi`, 'success');
-                                }
+                                await executeSimulationTrade(symbol, signal);
                             }
                         }
                         
@@ -915,6 +903,104 @@
                 addLog(`❌ ${symbol} işlem hatası: ${error.message}`, 'error');
                 throw error;
             }
+        }
+        
+        // Simülasyon trading işlemi yap
+        async function executeSimulationTrade(symbol, signal) {
+            try {
+                // Simüle edilmiş fiyat oluştur
+                const basePrice = getSimulatedPrice(symbol);
+                const priceVariation = (Math.random() - 0.5) * 0.02; // ±1% fiyat değişimi
+                const currentPrice = basePrice * (1 + priceVariation);
+                
+                // Pozisyon büyüklüğü hesapla (bakiye'nin %1'i)
+                const tryBalance = balances['TRY'] ? balances['TRY'].balance : 0;
+                const positionSize = tryBalance * 0.01; // %1 risk
+                
+                if (positionSize < 10) { // Minimum 10 TRY
+                    addLog(`⚠️ ${symbol} için yetersiz bakiye (${tryBalance.toFixed(2)} TRY)`, 'warning');
+                    return;
+                }
+                
+                const quantity = positionSize / currentPrice;
+                const asset = symbol.replace('TRY', '');
+                
+                if (signal.action === 'buy') {
+                    // ALIM işlemi simülasyonu
+                    const cost = quantity * currentPrice;
+                    
+                    if (tryBalance >= cost) {
+                        // TRY bakiyesini azalt
+                        balances['TRY'].balance -= cost;
+                        balances['TRY'].value = balances['TRY'].balance;
+                        
+                        // Kripto bakiyesini artır
+                        if (balances[asset]) {
+                            balances[asset].balance += quantity;
+                            balances[asset].value = balances[asset].balance * currentPrice;
+                        } else {
+                            balances[asset] = {
+                                balance: quantity,
+                                value: quantity * currentPrice
+                            };
+                        }
+                        
+                        addLog(`📈 ${symbol} ALIM işlemi simüle edildi`, 'success');
+                        addLog(`💰 Miktar: ${quantity.toFixed(6)} ${asset}`, 'info');
+                        addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
+                        addLog(`💸 Maliyet: ${cost.toFixed(2)} TRY`, 'info');
+                        
+                        // Bakiye görüntüsünü güncelle
+                        updateBalanceDisplay();
+                    } else {
+                        addLog(`❌ ${symbol} için yetersiz TRY bakiyesi`, 'error');
+                    }
+                    
+                } else if (signal.action === 'sell') {
+                    // SATIM işlemi simülasyonu
+                    if (balances[asset] && balances[asset].balance >= quantity) {
+                        const revenue = quantity * currentPrice;
+                        
+                        // Kripto bakiyesini azalt
+                        balances[asset].balance -= quantity;
+                        balances[asset].value = balances[asset].balance * currentPrice;
+                        
+                        // TRY bakiyesini artır
+                        balances['TRY'].balance += revenue;
+                        balances['TRY'].value = balances['TRY'].balance;
+                        
+                        addLog(`📉 ${symbol} SATIM işlemi simüle edildi`, 'success');
+                        addLog(`💰 Miktar: ${quantity.toFixed(6)} ${asset}`, 'info');
+                        addLog(`💵 Fiyat: ${currentPrice.toFixed(2)} TRY`, 'info');
+                        addLog(`💰 Gelir: ${revenue.toFixed(2)} TRY`, 'info');
+                        
+                        // Bakiye görüntüsünü güncelle
+                        updateBalanceDisplay();
+                    } else {
+                        addLog(`❌ ${symbol} için yetersiz ${asset} bakiyesi`, 'error');
+                    }
+                }
+                
+            } catch (error) {
+                addLog(`❌ ${symbol} simülasyon işlem hatası: ${error.message}`, 'error');
+            }
+        }
+        
+        // Simüle edilmiş fiyat oluştur
+        function getSimulatedPrice(symbol) {
+            const basePrices = {
+                'BTCTRY': 2500000,
+                'ETHTRY': 85000,
+                'ADATRY': 15,
+                'DOGETRY': 0.8,
+                'SOLTRY': 5000,
+                'AVAXTRY': 2000,
+                'TRXTRY': 0.5,
+                'XRPTRY': 20,
+                'SHIBTRY': 0.00001
+            };
+            
+            return basePrices[symbol] || 100;
         }
         
         // Sembol kartını güncelle
