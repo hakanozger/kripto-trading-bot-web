@@ -643,17 +643,17 @@
         let useRealAPI = false;
         let totalTradingVolume = 0; // 30 günlük toplam işlem hacmi
         
-        // Walk-forward optimize edilmiş stratejiler
+        // Walk-forward optimize edilmiş stratejiler - Optimize edilmiş
         const OPTIMAL_STRATEGIES = {
-            'ADATRY': 'scalping',
-            'AVAXTRY': 'scalping', 
-            'BTCTRY': 'turtle',
-            'DOGETRY': 'scalping',
-            'ETHTRY': 'scalping',
-            'SHIBTRY': 'scalping',
-            'SOLTRY': 'scalping',
-            'TRXTRY': 'scalping',
-            'XRPTRY': 'turtle'
+            'ADATRY': 'turtle',        // Scalping yerine turtle (daha az işlem)
+            'AVAXTRY': 'turtle',       // Scalping yerine turtle (daha az işlem)
+            'BTCTRY': 'turtle',        // Turtle stratejisi (uzun vadeli)
+            'DOGETRY': 'turtle',       // Scalping yerine turtle (daha az işlem)
+            'ETHTRY': 'turtle',        // Scalping yerine turtle (daha az işlem)
+            'SHIBTRY': 'turtle',       // Scalping yerine turtle (daha az işlem)
+            'SOLTRY': 'turtle',        // Scalping yerine turtle (daha az işlem)
+            'TRXTRY': 'turtle',        // Scalping yerine turtle (daha az işlem)
+            'XRPTRY': 'turtle'         // Turtle stratejisi (uzun vadeli)
         };
         
         // API anahtarlarını kaydet
@@ -772,8 +772,8 @@
             // İlk trading döngüsü
             runTradingCycle();
             
-            // Her 30 saniyede bir trading döngüsü çalıştır
-            tradingInterval = setInterval(runTradingCycle, 30000);
+            // Her 2 dakikada bir trading döngüsü çalıştır (daha az sık)
+            tradingInterval = setInterval(runTradingCycle, 120000);
         }
         
         // Bot'u durdur
@@ -806,8 +806,8 @@
                         const signal = await generateSignal(symbol, strategy);
                         updateSymbolCard(symbol, signal);
                         
-                        // İşlem yap
-                        if (signal.action !== 'hold' && signal.confidence > 0.5) {
+                        // İşlem yap - Güven eşiğini artırdık
+                        if (signal.action !== 'hold' && signal.confidence > 0.75) {
                             addLog(`🎯 ${symbol} ${signal.action} sinyali (${signal.confidence.toFixed(2)})`, 'info');
                             updateTradeCount();
                             
@@ -853,14 +853,15 @@
             }
         }
         
-        // Simülasyon sinyali üret
+        // Simülasyon sinyali üret - Optimize edilmiş
         function generateSimulationSignal() {
             const random = Math.random();
             
-            if (random < 0.15) {
-                return { action: 'buy', confidence: 0.6 + Math.random() * 0.3, reason: 'Güçlü al sinyali (Simülasyon)' };
-            } else if (random < 0.25) {
-                return { action: 'sell', confidence: 0.6 + Math.random() * 0.3, reason: 'Güçlü sat sinyali (Simülasyon)' };
+            // Çok daha az sinyal üret (komisyon maliyetlerini azaltmak için)
+            if (random < 0.03) { // %3'e düşürdük (önceden %15)
+                return { action: 'buy', confidence: 0.7 + Math.random() * 0.25, reason: 'Çok güçlü al sinyali (Simülasyon)' };
+            } else if (random < 0.05) { // %5'e düşürdük (önceden %25)
+                return { action: 'sell', confidence: 0.7 + Math.random() * 0.25, reason: 'Çok güçlü sat sinyali (Simülasyon)' };
             } else {
                 return { action: 'hold', confidence: 0, reason: 'Sinyal yok (Simülasyon)' };
             }
@@ -869,9 +870,9 @@
         // Gerçek trading işlemi yap
         async function executeRealTrade(symbol, signal) {
             try {
-                // Pozisyon büyüklüğü hesapla (bakiye'nin %1'i)
+                // Pozisyon büyüklüğü hesapla (bakiye'nin %2.5'i - daha büyük pozisyonlar)
                 const tryBalance = balances['TRY'] ? balances['TRY'].balance : 0;
-                const positionSize = tryBalance * 0.01; // %1 risk
+                const positionSize = tryBalance * 0.025; // %2.5 risk (komisyon maliyetlerini karşılamak için)
                 
                 if (positionSize < 10) { // Minimum 10 TRY
                     addLog(`⚠️ ${symbol} için yetersiz bakiye (${tryBalance.toFixed(2)} TRY)`, 'warning');
@@ -918,9 +919,9 @@
                 const priceVariation = (Math.random() - 0.5) * 0.02; // ±1% fiyat değişimi
                 const currentPrice = basePrice * (1 + priceVariation);
                 
-                // Pozisyon büyüklüğü hesapla (bakiye'nin %1'i)
+                // Pozisyon büyüklüğü hesapla (bakiye'nin %2.5'i - daha büyük pozisyonlar)
                 const tryBalance = balances['TRY'] ? balances['TRY'].balance : 0;
-                const positionSize = tryBalance * 0.01; // %1 risk
+                const positionSize = tryBalance * 0.025; // %2.5 risk (komisyon maliyetlerini karşılamak için)
                 
                 if (positionSize < 10) { // Minimum 10 TRY
                     addLog(`⚠️ ${symbol} için yetersiz bakiye (${tryBalance.toFixed(2)} TRY)`, 'warning');

@@ -299,22 +299,24 @@ function generateTurtleSignal(prices, currentPrice) {
     return { action: 'hold', confidence: 0, reason: 'Turtle sinyali yok' };
 }
 
-// Scalping sinyali
+// Scalping sinyali - Optimize edilmiş
 function generateScalpingSignal(prices, rsi, volumes) {
     const currentPrice = prices[prices.length - 1];
     const sma5 = calculateSMA(prices, 5);
     const sma10 = calculateSMA(prices, 10);
+    const sma20 = calculateSMA(prices, 20);
     const avgVolume = calculateSMA(volumes, 10);
     const currentVolume = volumes[volumes.length - 1];
     
-    if (rsi < 30 && currentPrice > sma5 && currentVolume > avgVolume * 1.5) {
-        return { action: 'buy', confidence: 0.6, reason: 'Oversold + Volume spike' };
-    } else if (rsi > 70 && currentPrice < sma5 && currentVolume > avgVolume * 1.5) {
-        return { action: 'sell', confidence: 0.6, reason: 'Overbought + Volume spike' };
-    } else if (sma5 > sma10 && rsi > 50) {
-        return { action: 'buy', confidence: 0.5, reason: 'Kısa vadeli yükseliş' };
-    } else if (sma5 < sma10 && rsi < 50) {
-        return { action: 'sell', confidence: 0.5, reason: 'Kısa vadeli düşüş' };
+    // Daha katı kriterler - sadece güçlü sinyaller
+    if (rsi < 25 && currentPrice > sma20 && currentVolume > avgVolume * 2.0) {
+        return { action: 'buy', confidence: 0.8, reason: 'Çok oversold + Güçlü volume' };
+    } else if (rsi > 75 && currentPrice < sma20 && currentVolume > avgVolume * 2.0) {
+        return { action: 'sell', confidence: 0.8, reason: 'Çok overbought + Güçlü volume' };
+    } else if (sma5 > sma20 && rsi > 55 && currentVolume > avgVolume * 1.8) {
+        return { action: 'buy', confidence: 0.75, reason: 'Güçlü yükseliş trendi' };
+    } else if (sma5 < sma20 && rsi < 45 && currentVolume > avgVolume * 1.8) {
+        return { action: 'sell', confidence: 0.75, reason: 'Güçlü düşüş trendi' };
     }
     
     return { action: 'hold', confidence: 0, reason: 'Scalping sinyali yok' };
